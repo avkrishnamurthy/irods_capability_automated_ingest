@@ -335,7 +335,7 @@ def irods_session(handler_module, meta, logger, **options):
     return sess
 
 
-def sync_data_from_file(hdlr_mod, meta, logger, scanner, content, **options):
+def sync_data_from_file(hdlr_mod, meta, logger, content, **options):
     target = meta["target"]
     path = meta["path"]
     init = meta["initial_ingest"]
@@ -392,7 +392,7 @@ def sync_data_from_file(hdlr_mod, meta, logger, scanner, content, **options):
                 meta2["path"] = dirname(path)
             create_dirs(logger, session, meta2, **options)
             if put:
-                event_handler.call("on_data_obj_create", logger, upload_file, logger, session, meta, scanner, op, **options)
+                event_handler.call("on_data_obj_create", logger, upload_file, logger, session, meta, op, **options)
             else:
                 event_handler.call("on_data_obj_create", logger, register_file, logger, session, meta, **options)
         elif createRepl:
@@ -417,7 +417,7 @@ def sync_metadata_from_file(hdlr_mod, meta, logger, **options):
 def sync_dir_meta(hdlr_mod, logger, session, meta, **options):
     pass
 
-def sync_data_from_dir(hdlr_mod, meta, logger, scanner, content, **options):
+def sync_data_from_dir(hdlr_mod, meta, logger, content, **options):
     target = meta["target"]
     path = meta["path"]
 
@@ -441,5 +441,5 @@ def sync_data_from_dir(hdlr_mod, meta, logger, scanner, content, **options):
             event_handler.call("on_coll_modify", logger, sync_dir_meta, logger, session, meta, **options)
     start_timer()
 
-def sync_metadata_from_dir(hdlr_mod, meta, logger, scanner, **options):
-    sync_data_from_dir(hdlr_mod, meta, logger, scanner, False, **options)
+def sync_metadata_from_dir(hdlr_mod, meta, logger, **options):
+    sync_data_from_dir(hdlr_mod, meta, logger, False, **options)

@@ -307,7 +307,7 @@ def sync_entry(self, meta, cls, syncer, datafunc, metafunc):
             meta2["target"] = target2
 
             if sync_time is None or mtime >= sync_time:
-                datafunc(event_handler.get_module(), meta2, logger, syncer, True)
+                datafunc(event_handler.get_module(), meta2, logger, True)
                 logger.info("succeeded", task=meta["task"], path=path)
             else:
                 metafunc(event_handler.get_module(), meta2, logger)
@@ -345,7 +345,7 @@ def sync_files(self, _meta):
         meta["ctime"] = obj_stats.get('ctime')
         meta["size"] = obj_stats.get('size')
         meta['task'] = 'sync_file'
-        sync_entry(self, meta, "file", syncer, sync_irods.sync_data_from_file, 
+        sync_entry(self, meta, "file", syncer, syncer.sync_data_from_file, 
             sync_irods.sync_metadata_from_file)
 
 # Use the built-in version of scandir/walk if possible, otherwise

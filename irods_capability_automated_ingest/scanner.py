@@ -11,6 +11,7 @@ from . import sync_logging
 from .custom_event_handler import custom_event_handler
 import irods.keywords as kw
 from irods.parallel import _Multipart_close_manager
+from .sync_irods import irods_session, child_of, dirname, create_dirs, register_file, sync_file_meta, update_metadata, start_timer
 from .redis_key import sync_time_key_handle
 from .sync_utils import size, get_redis
 from .sync_task import ContinueException
@@ -82,6 +83,85 @@ class scanner(object):
                 ret_val = True
 
         return ret_val
+    
+    def no_op(self, hdlr_mod, logger, session, meta, **options):
+        pass
+    
+    def sync_data_from_file(self, hdlr_mod, meta, logger, content, **options):
+        target = meta["target"]
+        path = meta["path"]
+        init = meta["initial_ingest"]
+
+        event_handler = custom_event_handler(meta)
+        session = irods_session(event_handler.get_module(), meta, logger, **options)
+
+        if init:
+            exists = False
+
+        else:
+            if session.data_objects.exists(target):
+                exists = True
+            elif session.collections.exists(target):
+                raise Exception("sync: cannot sync file " + path + " to collection " + target)
+            else:
+                exists = False
+
+        op = event_handler.operation(session, **options)
+
+        if op == Operation.NO_OP:
+            if not exists:
+                event_handler.call("on_data_obj_create", logger, self.no_op, logger, session, meta, **options)
+            else:
+                event_handler.call("on_data_obj_modify", logger, self.no_op, logger, session, meta, **options)
+        else:
+            if op is None:
+                op = Operation.REGISTER_SYNC
+            createRepl = False
+            if exists and op == Operation.REGISTER_AS_REPLICA_SYNC:
+                resc_name = event_handler.to_resource(session, **options)
+                if resc_name is None:
+                    raise Exception("no resource name defined")
+
+                found = False
+                foundPath = False
+                for replica in session.data_objects.get(target).replicas:
+                    if child_of(session, replica.resource_name, resc_name):
+                        found = True
+                        if replica.path == path:
+                            foundPath = True
+                if found:
+                    if not foundPath:
+                        raise Exception("there is at least one replica under resource but all replicas have wrong paths")
+                else:
+                    createRepl = True
+
+            put = op in [Operation.PUT, Operation.PUT_SYNC, Operation.PUT_APPEND]
+
+            if not exists:
+                meta2 = meta.copy()
+                meta2["target"] = dirname(target)
+                if 'b64_path_str' not in meta2:
+                    meta2["path"] = dirname(path)
+                create_dirs(logger, session, meta2, **options)
+                if put:
+                    event_handler.call("on_data_obj_create", logger, self.upload_file, logger, session, meta, op, exists=False, **options)
+                else:
+                    event_handler.call("on_data_obj_create", logger, register_file, logger, session, meta, **options)
+            elif createRepl:
+                options["regRepl"] = ""
+
+                event_handler.call("on_data_obj_create", logger, register_file, logger, session, meta, **options)
+            elif content:
+                if put:
+                    sync = op in [Operation.PUT_SYNC, Operation.PUT_APPEND]
+                    if sync:
+                        event_handler.call("on_data_obj_modify", logger, self.upload_file, logger, session, meta, op, exists=True, **options)
+                else:
+                    event_handler.call("on_data_obj_modify", logger, update_metadata, logger, session, meta, **options)
+            else:
+                event_handler.call("on_data_obj_modify", logger, sync_file_meta, logger, session, meta, **options)
+
+        start_timer()
 
 class filesystem_scanner(scanner):
     def __init__(self, meta):
@@ -143,7 +223,7 @@ class filesystem_scanner(scanner):
         return join(meta["target"], relpath(path, start=meta["root"]))
     
 
-    def upload_file(self, logger, session, meta, op, exists, **options):
+    def upload_file(self, hdlr_mod, logger, session, meta, op, exists, **options):
         """
         Function called from sync_irods.sync_file and sync_irods.upload_file for local files
 
@@ -260,7 +340,7 @@ class s3_scanner(scanner):
     
 #   Upload and Sync Functions
 # --------------------------------------------------------------------------------------------------------------------------------------------------------
-    def upload_file(self, logger, session, meta, op, exists, **options):
+    def upload_file(self, hdlr_mod, logger, session, meta, op, exists, **options):
 
         """
         Function called from sync_irods.sync_file and sync_irods.upload_file, for S3 objects
